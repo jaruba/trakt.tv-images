@@ -223,8 +223,9 @@ var getTmdb = function(id) {
     });
 };
 
-var getTvdb = function(id) {
+var grabImageTvdb = function(item) {
     return new Promise(function(resolve) {
+        var id = item.ids.tvdb
         if (!TvdbApiKey || !id) {
             return resolve({
                 source: 'tvdb',
@@ -232,7 +233,7 @@ var getTvdb = function(id) {
             });
         }
 
-        var url = 'https://api.thetvdb.com/series/' + id + '/images/query';
+        var url = 'https://api.thetvdb.com/series/' + id + '/episodes/query';
         var imbase = 'http://thetvdb.com/banners/';
         var opts = {
             json: true,
@@ -242,38 +243,25 @@ var getTvdb = function(id) {
             }
         };
 
-        function tvCall(key, name) {
-            return new Promise(function(resol) {
-                var ret = {};
-                ret[name] = null;
-
-                return got(url + '?keyType=' + key, opts).then(function(res) {
-                    var i = res.body;
-                    if (i && i.data && i.data[0]) {
-                        ret[name] = imbase + i.data[0].fileName;
+        got('https://api.thetvdb.com/episodes/' + id, opts).then(function(res) {
+            if (res && res.body && res.body.data && res.body.data.filename) {
+                return resolve({
+                    source: 'tvdb',
+                    img: {
+                        episode: imbase + res.body.data.filename
                     }
-                    return resol(ret);
-                }).catch(function(err) {
-                    return resol(ret);
                 });
+            }
+            return resolve({
+                source: 'tvdb',
+                img: null
             });
-        };
-
-        return Promise.all([tvCall('fanart', 'background'), tvCall('poster', 'poster')])
-            .then(function(responses) {
-                var obj = {};
-                obj[Object.keys(responses[0])[0]] = responses[0][Object.keys(responses[0])[0]];
-                obj[Object.keys(responses[1])[0]] = responses[1][Object.keys(responses[1])[0]];
-                return resolve({
-                    source: 'tvdb',
-                    img: obj
-                });
-            }).catch(function(err) {
-                return resolve({
-                    source: 'tvdb',
-                    img: null
-                });
+        }).catch(function(err) {
+            return resolve({
+                source: 'tvdb',
+                img: null
             });
+        });
     });
 };
 
@@ -329,6 +317,161 @@ var getShow = function (item) {
     });
 };
 
+var grabImageTmdb = function(item) {
+    return new Promise(function(resolve) {
+        if (!TmdbApiKey || !item.ids || !item.ids.tmdb) {
+            return resolve({
+                source: 'tmdb',
+                img: null
+            });
+        }
+        
+        var apiLink = null
+
+        if (item.season && item.number) {
+            if (item.ids.imdb)
+                apiLink = 'https://api.themoviedb.org/3/find/' + item.ids.imdb + '?api_key=' + TmdbApiKey + '&language=en-US&external_source=imdb_id'
+            else if (item.ids.tvdb)
+                apiLink = 'https://api.themoviedb.org/3/find/' + item.ids.tvdb + '?api_key=' + TmdbApiKey + '&language=en-US&external_source=tvdb_id'
+        } else
+            apiLink = 'https://api.themoviedb.org/3/movie/' + item.ids.tmdb + '/images?api_key=' + TmdbApiKey
+
+        return got(apiLink, {
+            json: true,
+            headers: {
+                'content-type': 'application/json'
+            },
+            timeout: 1000
+        }).then(function(res) {
+
+            var url = 'https://image.tmdb.org/t/p/';
+            var bsize = 'original'; // or w1280
+            var psize = 'w780'; // or w780
+
+            var built = null, bg = null, pos = null;
+            if (res.body) {
+                if (res.body.backdrops && res.body.backdrops[0])
+                    bg = url + bsize + res.body.backdrops[0].file_path;
+                if (res.body.posters && res.body.posters[0])
+                    pos = url + psize + res.body.posters[0].file_path;
+                if (res.body.still_path)
+                    epImg = url + psize + res.body.still_path;
+                if (res.body.tv_episode_results && res.body.tv_episode_results.length && res.body.tv_episode_results[0].still_path)
+                    epImg = url + psize + res.body.tv_episode_results[0].still_path;
+
+                if (bg || pos || epImg) {
+                    built = {
+                        background: bg,
+                        poster: pos,
+                        episode: epImg
+                    };
+                }
+            }
+
+            return resolve({
+                source: 'tmdb',
+                img: built
+            });
+
+        }).catch(function(error) {
+            return resolve({
+                source: 'tmdb',
+                img: null
+            });
+        });
+    });
+
+}
+
+var getTmdbEp = function (item) {
+    return new Promise(function(resolve) {
+        if (item.ids.imdb || item.ids.tvdb)
+            grabImageTmdb(item).then(resolve)
+        else
+            resolve({
+                source: 'tmdb',
+                img: null
+            })
+    })
+}
+
+var getTvdb = function(id) {
+    return new Promise(function(resolve) {
+        if (!TvdbApiKey || !id) {
+            return resolve({
+                source: 'tvdb',
+                img: null
+            });
+        }
+
+        var url = 'https://api.thetvdb.com/series/' + id + '/images/query';
+        var imbase = 'http://thetvdb.com/banners/';
+        var opts = {
+            json: true,
+            method: 'GET',
+            headers: {
+                Authorization: 'Bearer ' + TvdbApiKey
+            }
+        };
+
+        function tvCall(key, name) {
+            return new Promise(function(resol) {
+                var ret = {};
+                ret[name] = null;
+
+                return got(url + '?keyType=' + key, opts).then(function(res) {
+                    var i = res.body;
+                    if (i && i.data && i.data[0]) {
+                        ret[name] = imbase + i.data[0].fileName;
+                    }
+                    return resol(ret);
+                }).catch(function(err) {
+                    return resol(ret);
+                });
+            });
+        };
+
+        return Promise.all([tvCall('fanart', 'background'), tvCall('poster', 'poster')])
+            .then(function(responses) {
+                var obj = {};
+                obj[Object.keys(responses[0])[0]] = responses[0][Object.keys(responses[0])[0]];
+                obj[Object.keys(responses[1])[0]] = responses[1][Object.keys(responses[1])[0]];
+                return resolve({
+                    source: 'tvdb',
+                    img: obj
+                });
+            }).catch(function(err) {
+                return resolve({
+                    source: 'tvdb',
+                    img: null
+                });
+            });
+    });
+};
+
+var getTvdbEp = function (item) {
+    return new Promise(function(resolve) {
+        if (item && item.ids && item.ids.tvdb)
+            grabImageTvdb(item).then(resolve)
+        else resolve(null)
+    })
+};
+
+var getEpisode = function (item) {
+    return new Promise(function(resolve) {
+        getTmdbEp(item).then(function(obj) {
+            if (obj && obj.img && (obj.img.episode || obj.img.background))
+                resolve(obj.img)
+            else
+                getTvdbEp(item).then(function(obj) {
+                    if (obj && obj.img)
+                        resolve(obj.img)
+                    else resolve(null)
+                })
+        })
+    })
+};
+
 var notFound = function () {
     return new Promise(function (resolve) {
         resolve({
@@ -339,6 +482,20 @@ var notFound = function () {
 };
 
 Images.get = function(input) {
+    return new Promise(function (resolve) {
+        if (input.season && input.number)
+            getEpisode(input).then(function(obj) {
+                if (obj && (obj.background || obj.episode))
+                    resolve(obj)
+                else
+                    Images.getMovieBack(input).then(resolve)
+            })
+        else
+            Images.getMovieBack(input).then(resolve)
+    })
+}
+
+Images.getMovieBack = function(input) {
     var item = parseItem(input);
 
     if (item.type && (item.imdb || item.tvdb || item.tmdb)) {
