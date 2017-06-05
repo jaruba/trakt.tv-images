@@ -348,7 +348,7 @@ var grabImageTmdb = function(item) {
             var bsize = 'original'; // or w1280
             var psize = 'w780'; // or w780
 
-            var built = null, bg = null, pos = null;
+            var built = null, bg = null, pos = null, epImg = null;
             if (res.body) {
                 if (res.body.backdrops && res.body.backdrops[0])
                     bg = url + bsize + res.body.backdrops[0].file_path;
